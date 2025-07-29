@@ -1,7 +1,30 @@
 import os
 import subprocess
+import logging
+from datetime import datetime
 from dotenv import load_dotenv
 from pydantic_ai import Agent
+
+def setup_logging():
+    """Sets up a file-based logger for the application."""
+    log_filename = f"react-log-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+    
+    # Configure the root logger to capture everything from pydantic_ai
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        filename=log_filename,
+        filemode='w'
+    )
+    
+    # Add a stream handler to also print logs to the console for real-time feedback
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logging.getLogger().addHandler(console_handler)
+
+    return log_filename
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,7 +58,7 @@ def shell(command: str) -> str:
         # Security Note: Running arbitrary shell commands can be dangerous.
         # In a real-world application, this should be heavily sandboxed and restricted.
         # For this example, we assume the commands are trusted.
-        print(f"Executing command: {command}")
+        logging.info(f"Executing command: {command}")
         result = subprocess.run(
             command,
             shell=True,
@@ -44,16 +67,17 @@ def shell(command: str) -> str:
             check=True
         )
         output = f"Stdout:\n{result.stdout}\nStderr:\n{result.stderr}"
+        logging.info(f"Command output:\n{output}")
         return output
     except subprocess.CalledProcessError as e:
         # If the command returns a non-zero exit code, it's an error
         error_message = f"Command failed with exit code {e.returncode}.\nStdout:\n{e.stdout}\nStderr:\n{e.stderr}"
-        print(error_message)
+        logging.error(error_message)
         return error_message
     except Exception as e:
         # Handle other potential exceptions
         error_message = f"An unexpected error occurred: {str(e)}"
-        print(error_message)
+        logging.error(error_message)
         return error_message
 
 
@@ -61,16 +85,19 @@ def main():
     """
     Main function to run the Kubernetes ReAct AI agent.
     """
+    log_filename = setup_logging()
+    
     # Example goal for the agent
     goal = "Check the status of all pods in all namespaces. Identify any pods that are not in a 'Running' or 'Completed' state."
 
-    print(f"Goal: {goal}\n")
+    logging.info(f"Goal: {goal}\n")
 
     # Run the agent synchronously
     response = agent.run_sync(goal)
 
-    # The final output is automatically printed by the stream
-    print(f"\nFinal Answer:\n{response.output}")
+    # The final output is printed to the console
+    logging.info(f"\nFinal Answer:\n{response.output}")
+    print(f"\nFull conversation history logged to: {log_filename}")
 
 
 if __name__ == "__main__":

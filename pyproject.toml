@@ -12,5 +12,7 @@ dependencies = [
 
 [tool.uv]
 dev-dependencies = [
+    "mypy>=1.17.0",
     "pytest",
+    "ruff>=0.12.5",
 ] 

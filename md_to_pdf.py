@@ -10,11 +10,11 @@
 
 import argparse
 import os
-import markdown2
-from weasyprint import HTML, CSS
+import markdown2  # type: ignore[import-not-found]
+from weasyprint import HTML, CSS  # type: ignore[import-not-found]
 from pygments.formatters import HtmlFormatter
 
-def create_pdf(markdown_file: str, pdf_file: str):
+def create_pdf(markdown_file: str, pdf_file: str) -> None:
     """Converts a Markdown file to a PDF file with syntax highlighting."""
 
     if not os.path.exists(markdown_file):
@@ -27,7 +27,7 @@ def create_pdf(markdown_file: str, pdf_file: str):
 
     # Get Pygments CSS for syntax highlighting
     formatter = HtmlFormatter(style='default')
-    pygments_css = formatter.get_style_defs('.codehilite')
+    pygments_css = formatter.get_style_defs('.codehilite')  # type: ignore[no-untyped-call]
 
     # CSS for overall styling
     main_css = f"""

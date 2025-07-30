@@ -7,7 +7,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.google import GoogleProvider
 
-def setup_logging():
+def setup_logging() -> str:
     """Sets up a file-based logger for the application."""
     log_filename = f"logs/pydanticai-log-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
     
@@ -85,7 +85,7 @@ def shell(command: str) -> str:
         return error_message
 
 
-def main():
+def main() -> None:
     """
     Main function to run the Kubernetes ReAct AI agent.
     """

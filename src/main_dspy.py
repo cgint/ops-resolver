@@ -1,4 +1,4 @@
-import dspy
+import dspy  # type: ignore[import-untyped]
 import subprocess
 import logging
 import os
@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from main_dspy_prompt import get_allowed_commands_starts_with_information, allowed_commands_starts_with
 from tool_shell import kubectl_shell
 
-def setup_logging():
+def setup_logging() -> str:
     """Sets up a file-based logger for the application."""
     log_filename = f"logs/dspy-log-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
     
@@ -41,7 +41,7 @@ if "GEMINI_API_KEY" not in os.environ:
 gemini = dspy.LM('vertex_ai/gemini-2.5-flash')
 dspy.configure(lm=gemini)
 
-def make_sure_we_are_using_the_correct_context(context_name: str | None = None, force_set_context: bool = False):
+def make_sure_we_are_using_the_correct_context(context_name: str | None = None, force_set_context: bool = False) -> None:
     """
     Make sure we are using the correct context.
     """
@@ -100,7 +100,7 @@ def make_sure_we_are_using_the_correct_context(context_name: str | None = None, 
         print("Invalid selection. Quitting.")
         exit(1)
 
-def main(goal: str, context_name: str | None = None, force_set_context: bool = False):
+def main(goal: str, context_name: str | None = None, force_set_context: bool = False) -> None:
     """
     Main function to run the Kubernetes ReAct AI agent using DSPy.
     """
@@ -110,7 +110,7 @@ def main(goal: str, context_name: str | None = None, force_set_context: bool = F
     
     instructions = get_allowed_commands_starts_with_information(allowed_commands_starts_with)   
     signature=dspy.Signature(
-            "question -> answer", # type:ignore
+            "question -> answer",
             instructions=instructions
         )
     agent = dspy.ReAct(tools=[dspy.Tool(kubectl_shell)], signature=signature)

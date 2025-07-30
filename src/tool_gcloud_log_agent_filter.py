@@ -52,6 +52,7 @@ def gcloud_logging_read_command(
     Returns:
         String containing only relevant log information based on AI analysis
     """
+    MAX_RESULTS = 250
     PAGE_SIZE = 100
     
     # Build the complete filter
@@ -77,7 +78,7 @@ def gcloud_logging_read_command(
         entries_list = list(client.list_entries(  # type: ignore[no-untyped-call]
             filter_=filter_str,
             order_by="timestamp desc",
-            max_results=1000  # Limit total results to avoid overwhelming responses
+            max_results=MAX_RESULTS
         ))
         
         # Process entries in pages of PAGE_SIZE
@@ -110,7 +111,12 @@ LOG_ENTRIES_JSON:
 
             try:
                 # Call the LM for analysis
+                logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis using prompt: {prompt}")
+                # Log the JSON entries for debugging
+                logging.info(f"Page {page_count} entries JSON: {json.dumps(entries_compact, indent=2)}")
                 response = lm(prompt)
+                # Log the full response as JSON for debugging
+                logging.info(f"Page {page_count} LLM response JSON: {json.dumps(str(response), indent=2)}")
                 answer = response.strip() if hasattr(response, 'strip') else str(response).strip()
                 
                 # Check if the response indicates relevance
@@ -118,13 +124,13 @@ LOG_ENTRIES_JSON:
                     relevant_chunks.append(f"=== Page {page_count} Analysis ===\n{answer}")
                     # Log first 100 chars of the analysis for visibility
                     preview = answer.replace('\n', ' ')[:100] + "..." if len(answer) > 100 else answer.replace('\n', ' ')
-                    logging.info(f"Page {page_count}/{len(entries_in_page)} entries: ✓ Found relevant info - {preview}")
+                    logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✓ Found relevant info - {preview}")
                 else:
-                    logging.info(f"Page {page_count}/{len(entries_in_page)} entries: ✗ No relevant information found")
+                    logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✗ No relevant information found")
                     
             except Exception as e:
                 error_msg = f"Error analyzing page {page_count}: {str(e)}"
-                logging.error(f"Page {page_count}/{len(entries_in_page)} entries: ⚠ Error - {str(e)}")
+                logging.error(f"Page {page_count} with {len(entries_in_page)} entries: ⚠ Error - {str(e)}")
                 relevant_chunks.append(f"=== Page {page_count} Error ===\n{error_msg}")
         
         logging.info(f"Processed {page_count} pages with {total_entries} total entries")

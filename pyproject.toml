@@ -5,9 +5,10 @@ description = "A ReAct AI to analyze Kubernetes clusters."
 requires-python = ">=3.11"
 dependencies = [
     "pydantic",
-    "openai",
+    "google-generativeai",
     "python-dotenv",
     "pydantic-ai",
+    "dspy",
 ]
 
 [tool.uv]

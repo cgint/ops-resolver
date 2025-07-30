@@ -4,10 +4,12 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from pydantic_ai import Agent
+from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.providers.google import GoogleProvider
 
 def setup_logging():
     """Sets up a file-based logger for the application."""
-    log_filename = f"react-log-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+    log_filename = f"logs/pydanticai-log-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
     
     # Configure the root logger to capture everything from pydantic_ai
     logging.basicConfig(
@@ -30,14 +32,16 @@ def setup_logging():
 load_dotenv()
 
 # It's good practice to handle the case where the API key is not set
-if "OPENAI_API_KEY" not in os.environ:
-    print("Error: OPENAI_API_KEY environment variable not set.")
+if "GEMINI_API_KEY" not in os.environ:
+    print("Error: GEMINI_API_KEY environment variable not set.")
     exit(1)
 
 # Define the ReAct agent
-# Using a more advanced model might yield better reasoning for kubectl commands
+# Using Gemini 2.5 Flash for advanced reasoning for kubectl commands
+provider = GoogleProvider(vertexai=True)
+model = GoogleModel('gemini-2.5-flash', provider=provider)
 agent = Agent(
-    "openai:gpt-4-turbo",
+    model,
     system_prompt=(
         "You are a Kubernetes (k8s) expert assistant. "
         "Your task is to use the provided 'shell' tool to execute kubectl commands and analyze the cluster based on the user's request. "
@@ -88,7 +92,9 @@ def main():
     log_filename = setup_logging()
     
     # Example goal for the agent
-    goal = "Check the status of all pods in all namespaces. Identify any pods that are not in a 'Running' or 'Completed' state."
+    # goal = "Check the status of all pods in all namespaces. Identify any pods that are not in a 'Running' or 'Completed' state."
+    # goal = "List all pods running on any node from node-pool master-pool from namespace 'default'."
+    goal = "What are the max allowed pods per node in the cluster?"
 
     logging.info(f"Goal: {goal}\n")
 

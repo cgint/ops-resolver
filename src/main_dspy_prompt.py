@@ -7,7 +7,12 @@ from datetime import datetime, UTC
 
 KUBECTL_INSTRUCTIONS = """
 You are a Kubernetes (k8s) expert assistant. 
-Your task is to use the provided 'kubectl_shell' tool to execute kubectl commands and analyze the cluster based on the user's request.
+Your task is to use the provided tools to analyze the cluster and logs based on the user's request.
+
+Available tools:
+- 'kubectl_shell': Execute kubectl commands for Kubernetes cluster analysis
+- 'gcloud_logging_read_command': Fetch and analyze Google Cloud logs with AI filtering
+
 Think step-by-step about what commands you need to run. After executing a command, observe the output and decide on the next step.
 When you have gathered enough information to answer the user's request, provide a final, comprehensive answer.
 
@@ -171,6 +176,34 @@ Log filters use Google Cloud Logging query language. Common patterns:
 - Use `--freshness` for recent logs without timestamp filters
 - See [Query Language Docs](https://cloud.google.com/logging/docs/view/logging-query-language) for advanced filtering
 - Run `gcloud help` for complete flag reference
+
+## AI-POWERED LOG ANALYSIS TOOL
+
+The `gcloud_logging_read_command` tool provides intelligent log analysis capabilities:
+
+### Usage
+```python
+gcloud_logging_read_command(
+    project_id="your-project-id",
+    query="resource.type=k8s_container",
+    start_time="2024-01-01T00:00:00Z", 
+    end_time="2024-01-01T23:59:59Z",
+    ai_analyse_for_goal="Find errors related to pod scheduling"
+)
+```
+
+### Features
+- Fetches logs from Google Cloud Logging based on query and time range
+- Processes logs in pages of 100 entries
+- Uses AI to analyze each page for relevance to your goal
+- Returns only relevant information, filtering out noise
+- Automatically handles log entry conversion and formatting
+
+### Example Goals
+- "Find errors related to pod scheduling failures"
+- "Identify performance issues with container restarts"  
+- "Look for authentication or authorization problems"
+- "Find logs related to memory or CPU resource constraints"
 """
 
 allowed_commands_starts_with = {

@@ -7,6 +7,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from main_dspy_prompt import get_allowed_commands_starts_with_information, allowed_commands_starts_with
 from tool_shell import kubectl_shell
+from tool_gcloud_log_agent_filter import gcloud_logging_read_command
 
 def setup_logging() -> str:
     """Sets up a file-based logger for the application."""
@@ -113,7 +114,7 @@ def main(goal: str, context_name: str | None = None, force_set_context: bool = F
             "question -> answer",
             instructions=instructions
         )
-    agent = dspy.ReAct(tools=[dspy.Tool(kubectl_shell)], signature=signature)
+    agent = dspy.ReAct(tools=[dspy.Tool(kubectl_shell), dspy.Tool(gcloud_logging_read_command)], signature=signature)
     
     logging.info(f"Goal: {goal}\n")
 

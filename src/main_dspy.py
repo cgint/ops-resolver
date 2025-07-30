@@ -49,6 +49,12 @@ def kubectl_shell(command: str) -> str:
     Returns:
         The command output including stdout and stderr
     """
+    allowed_starts_with = ["kubectl get", "kubectl describe", "kubectl logs"]
+    if not any(command.startswith(start) for start in allowed_starts_with):
+        error_message = f"Error: Command '{command}' not allowed! Allowed commands start with {', '.join(allowed_starts_with)}"
+        logging.error(error_message)
+        return error_message
+    
     try:
         # Security Note: Running arbitrary shell commands can be dangerous.
         # In a real-world application, this should be heavily sandboxed and restricted.
@@ -75,39 +81,6 @@ def kubectl_shell(command: str) -> str:
         logging.error(error_message)
         return error_message
 
-# Create DSPy tool from the shell function
-shell_tool = dspy.Tool(kubectl_shell)
-
-class K8sReActAgent(dspy.Module):
-    """
-    A Kubernetes ReAct AI agent using DSPy.
-    
-    This agent can analyze Kubernetes clusters by executing kubectl commands
-    and reasoning about the results to answer user questions.
-    """
-    
-    def __init__(self):
-        super().__init__()
-        
-        # Define the signature with instructions
-        signature = dspy.Signature(
-            "question -> answer",
-            instructions=(
-                "You are a Kubernetes (k8s) expert assistant. "
-                "Your task is to use the provided 'kubectl_shell' tool to execute kubectl commands and analyze the cluster based on the user's request. "
-                "Think step-by-step about what commands you need to run. "
-                "After executing a command, observe the output and decide on the next step. "
-                "When you have gathered enough information to answer the user's request, provide a final, comprehensive answer."
-            )
-        )
-        
-        # Create ReAct module with the signature and tools
-        self.react = dspy.ReAct(signature, tools=[shell_tool])
-    
-    def forward(self, question):
-        """Forward pass through the ReAct agent."""
-        return self.react(question=question)
-
 def main():
     """
     Main function to run the Kubernetes ReAct AI agent using DSPy.
@@ -115,12 +88,18 @@ def main():
     log_filename = setup_logging()
     
     # Initialize the agent
-    agent = K8sReActAgent()
+    from main_dspy_prompt import KUBECTL_INSTRUCTIONS
+    
+    agent = dspy.ReAct(tools=[dspy.Tool(kubectl_shell)], signature=dspy.Signature(
+            inputs="question",
+            outputs="answer",
+            instructions=KUBECTL_INSTRUCTIONS
+        ))
     
     # Example goals for the agent
     # goal = "Check the status of all pods in all namespaces. Identify any pods that are not in a 'Running' or 'Completed' state."
     # goal = "List all pods running on any node from node-pool master-pool from namespace 'default'."
-    goal = "What are the max allowed pods per node in the cluster?"
+    goal = "What are the max allowed pods per node-pool in the cluster?"
 
     logging.info(f"Goal: {goal}\n")
 

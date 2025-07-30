@@ -5,6 +5,8 @@ import os
 import argparse
 from datetime import datetime
 from dotenv import load_dotenv
+from main_dspy_prompt import get_allowed_commands_starts_with_information, allowed_commands_starts_with
+from tool_shell import kubectl_shell
 
 def setup_logging():
     """Sets up a file-based logger for the application."""
@@ -39,50 +41,7 @@ if "GEMINI_API_KEY" not in os.environ:
 gemini = dspy.LM('vertex_ai/gemini-2.5-flash')
 dspy.configure(lm=gemini)
 
-def kubectl_shell(command: str) -> str:
-    """
-    Executes a kubectl command and returns its output.
-    Only use this tool to run kubectl commands for Kubernetes cluster analysis.
-    
-    Args:
-        command: The kubectl command to execute
-        
-    Returns:
-        The command output including stdout and stderr
-    """
-    allowed_starts_with = ["kubectl get", "kubectl describe", "kubectl logs"]
-    if not any(command.startswith(start) for start in allowed_starts_with):
-        error_message = f"Error: Command '{command}' not allowed! Allowed commands start with {', '.join(allowed_starts_with)}"
-        logging.error(error_message)
-        return error_message
-    
-    try:
-        # Security Note: Running arbitrary shell commands can be dangerous.
-        # In a real-world application, this should be heavily sandboxed and restricted.
-        # For this example, we assume the commands are trusted.
-        logging.info(f"Executing command: {command}")
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        output = f"Stdout:\n{result.stdout}\nStderr:\n{result.stderr}"
-        logging.info(f"Command output:\n{output}")
-        return output
-    except subprocess.CalledProcessError as e:
-        # If the command returns a non-zero exit code, it's an error
-        error_message = f"Command failed with exit code {e.returncode}.\nStdout:\n{e.stdout}\nStderr:\n{e.stderr}"
-        logging.error(error_message)
-        return error_message
-    except Exception as e:
-        # Handle other potential exceptions
-        error_message = f"An unexpected error occurred: {str(e)}"
-        logging.error(error_message)
-        return error_message
-    
-def make_sure_we_are_using_the_correct_context(context_name: str | None = None, force_selection: bool = False):
+def make_sure_we_are_using_the_correct_context(context_name: str | None = None, force_set_context: bool = False):
     """
     Make sure we are using the correct context.
     """
@@ -92,7 +51,7 @@ def make_sure_we_are_using_the_correct_context(context_name: str | None = None, 
         current_context = context_name
         
     print(f"\nCurrent context: {current_context}\n")
-    if force_selection:
+    if force_set_context:
         print(" -> Forcing selection of context.")
         selection_y_n_s_q = "y"
     else:   
@@ -136,35 +95,26 @@ def make_sure_we_are_using_the_correct_context(context_name: str | None = None, 
             current_context = matching_contexts[0]
             print(f"Selected context: {current_context}")
         subprocess.run(["kubectl", "config", "use-context", current_context], capture_output=True, text=True)
-        make_sure_we_are_using_the_correct_context(current_context, force_selection)
+        make_sure_we_are_using_the_correct_context(current_context, force_set_context)
     else:
         print("Invalid selection. Quitting.")
         exit(1)
 
-def main(context_name: str | None = None, force_selection: bool = False):
+def main(goal: str, context_name: str | None = None, force_set_context: bool = False):
     """
     Main function to run the Kubernetes ReAct AI agent using DSPy.
     """
     log_filename = setup_logging()
 
-    # run kubectl config current-context and ask the user if it is ok to proceed with the current context
-
-    make_sure_we_are_using_the_correct_context(context_name, force_selection)
+    make_sure_we_are_using_the_correct_context(context_name, force_set_context)
     
-    # Initialize the agent
-    from main_dspy_prompt import KUBECTL_INSTRUCTIONS
-    
+    instructions = get_allowed_commands_starts_with_information(allowed_commands_starts_with)   
     signature=dspy.Signature(
             "question -> answer", # type:ignore
-            instructions=KUBECTL_INSTRUCTIONS
+            instructions=instructions
         )
     agent = dspy.ReAct(tools=[dspy.Tool(kubectl_shell)], signature=signature)
     
-    # Example goals for the agent
-    # goal = "Check the status of all pods in all namespaces. Identify any pods that are not in a 'Running' or 'Completed' state."
-    # goal = "List all pods running on any node from node-pool master-pool from namespace 'default'."
-    goal = "What are the max allowed pods per node-pool in the cluster?"
-
     logging.info(f"Goal: {goal}\n")
 
     # Run the agent
@@ -190,6 +140,12 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Kubernetes ReAct AI agent using DSPy")
     parser.add_argument("-c", "--context", type=str, help="Kubernetes context name to use")
-    parser.add_argument("-f", "--force-selection", action="store_true", help="Force context selection even if current context matches")
+    parser.add_argument("-f", "--force-set-context", action="store_true", help="Force context selection even if current context matches")
+    parser.add_argument("-m", "--mission", type=str, help="Override the default goal/mission for the agent")
     args = parser.parse_args()
-    main(args.context, args.force_selection)
+    
+    # Define default goal and handle override
+    default_goal = "What are the max allowed pods per node-pool in the cluster?"
+    goal = args.mission if args.mission else default_goal
+    
+    main(goal, args.context, args.force_set_context)

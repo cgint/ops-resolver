@@ -1,7 +1,7 @@
 [project]
 name = "k8s-react-ai"
 version = "0.1.0"
-description = "A ReAct AI to analyze Kubernetes clusters."
+description = "A ReAct AI to analyze GCP and Kubernetes clusters."
 requires-python = ">=3.11"
 dependencies = [
     "pydantic",
@@ -9,6 +9,7 @@ dependencies = [
     "python-dotenv",
     "pydantic-ai",
     "dspy",
+    "google-cloud-logging"
 ]
 
 [tool.uv]
@@ -16,4 +17,5 @@ dev-dependencies = [
     "mypy>=1.17.0",
     "pytest",
     "ruff>=0.12.5",
+    "types-Pygments",
 ] 

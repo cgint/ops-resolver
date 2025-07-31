@@ -114,7 +114,8 @@ def main(goal: str, context_name: str | None = None, force_set_context: bool = F
             "question -> answer",
             instructions=instructions
         )
-    agent = dspy.ReAct(tools=[dspy.Tool(kubectl_shell), dspy.Tool(gcloud_logging_read_command)], signature=signature)
+    tools = [dspy.Tool(kubectl_shell), dspy.Tool(gcloud_logging_read_command)]
+    agent = dspy.ReAct(tools=tools, signature=signature)
     
     logging.info(f"Goal: {goal}\n")
 
@@ -127,7 +128,9 @@ def main(goal: str, context_name: str | None = None, force_set_context: bool = F
         
         # The final output is printed to the console
         logging.info(f"\nFinal Answer:\n{final_answer}")
-        # print(f"\nFinal Answer:\n{final_answer}")
+
+        with open(log_filename.replace(".log", ".final_answer.md"), "a") as f:
+            f.write(final_answer)
         
     except Exception as e:
         error_msg = f"Error running agent: {str(e)}"

@@ -1,13 +1,12 @@
-import asyncio
 import dspy  # type: ignore[import-untyped]
 import json
 import logging
-from typing import Any, AsyncGenerator, List
+from typing import Any, List
 from pydantic import BaseModel
 from google.cloud import logging as gcp_logging
 
 # Configuration constants - adjust these as needed
-MAX_RESULTS = 250
+MAX_RESULTS = 1000
 PAGE_SIZE = 100
 
 class LogEntry(BaseModel):
@@ -150,129 +149,130 @@ LOG_ENTRIES_JSON:
         logging.error(error_message)
         return error_message
 
+# Tried gcloud_logging_read_command_async once - immediately returned
 
-async def gcloud_logging_read_command_async(
-    project_id: str,
-    query: str,
-    start_time: str,
-    end_time: str,
-    ai_analyse_for_goal: str,
-) -> AsyncGenerator[str, None]:
-    """
-    Async generator that fetches log entries from Google Cloud Logging and yields AI-filtered results.
+# async def gcloud_logging_read_command_async(
+#     project_id: str,
+#     query: str,
+#     start_time: str,
+#     end_time: str,
+#     ai_analyse_for_goal: str,
+# ) -> AsyncGenerator[str, None]:
+#     """
+#     Async generator that fetches log entries from Google Cloud Logging and yields AI-filtered results.
     
-    Args:
-        project_id: The Google Cloud project ID
-        query: The log filter query
-        start_time: Start time in ISO format (e.g., "2024-01-01T00:00:00Z")
-        end_time: End time in ISO format (e.g., "2024-01-01T23:59:59Z")
-        ai_analyse_for_goal: Description of what to look for in the logs
+#     Args:
+#         project_id: The Google Cloud project ID
+#         query: The log filter query
+#         start_time: Start time in ISO format (e.g., "2024-01-01T00:00:00Z")
+#         end_time: End time in ISO format (e.g., "2024-01-01T23:59:59Z")
+#         ai_analyse_for_goal: Description of what to look for in the logs
         
-    Yields:
-        Strings containing relevant log information based on AI analysis, one per page
-    """
-    # Build the complete filter
-    filter_str = f'({query}) AND timestamp>="{start_time}" AND timestamp<="{end_time}"'
+#     Yields:
+#         Strings containing relevant log information based on AI analysis, one per page
+#     """
+#     # Build the complete filter
+#     filter_str = f'({query}) AND timestamp>="{start_time}" AND timestamp<="{end_time}"'
     
-    logging.info(f"Async fetching logs for project {project_id} with filter: {filter_str}")
-    logging.info(f"AI analysis goal: {ai_analyse_for_goal}")
+#     logging.info(f"Async fetching logs for project {project_id} with filter: {filter_str}")
+#     logging.info(f"AI analysis goal: {ai_analyse_for_goal}")
     
-    try:
-        # Get the configured DSPy LM instance
-        lm = dspy.settings.lm
-        if lm is None:
-            yield "Error: No language model configured in DSPy"
-            return
+#     try:
+#         # Get the configured DSPy LM instance
+#         lm = dspy.settings.lm
+#         if lm is None:
+#             yield "Error: No language model configured in DSPy"
+#             return
         
-        # Create client in thread to avoid blocking
-        client = await asyncio.to_thread(gcp_logging.Client, project=project_id)
+#         # Create client in thread to avoid blocking
+#         client = await asyncio.to_thread(gcp_logging.Client, project=project_id)
         
-        page_count = 0
-        total_entries = 0
+#         page_count = 0
+#         total_entries = 0
         
-        # Fetch log entries using page iterator for streaming
-        def fetch_page_iterator():
-            return client.list_entries(
-                filter_=filter_str,
-                order_by="timestamp desc", 
-                page_size=PAGE_SIZE
-            )
+#         # Fetch log entries using page iterator for streaming
+#         def fetch_page_iterator():
+#             return client.list_entries(
+#                 filter_=filter_str,
+#                 order_by="timestamp desc", 
+#                 page_size=PAGE_SIZE
+#             )
         
-        # Get the page iterator in a thread
-        page_iterator = await asyncio.to_thread(fetch_page_iterator)
+#         # Get the page iterator in a thread
+#         page_iterator = await asyncio.to_thread(fetch_page_iterator)
         
-        # Process pages one by one
-        for page in page_iterator:
-            page_count += 1
-            entries_in_page = list(page)
-            total_entries += len(entries_in_page)
+#         # Process pages one by one
+#         for page in page_iterator:
+#             page_count += 1
+#             entries_in_page = list(page)
+#             total_entries += len(entries_in_page)
             
-            # Stop if we've reached the maximum results
-            if total_entries > MAX_RESULTS:
-                entries_in_page = entries_in_page[:MAX_RESULTS - (total_entries - len(entries_in_page))]
-                logging.info(f"Reached MAX_RESULTS limit of {MAX_RESULTS}, stopping")
+#             # Stop if we've reached the maximum results
+#             if total_entries > MAX_RESULTS:
+#                 entries_in_page = entries_in_page[:MAX_RESULTS - (total_entries - len(entries_in_page))]
+#                 logging.info(f"Reached MAX_RESULTS limit of {MAX_RESULTS}, stopping")
             
-            if not entries_in_page:
-                continue
+#             if not entries_in_page:
+#                 continue
             
-            # Convert entries to our model format in thread
-            def convert_entries():
-                return [to_entry(entry).model_dump() for entry in entries_in_page]
+#             # Convert entries to our model format in thread
+#             def convert_entries():
+#                 return [to_entry(entry).model_dump() for entry in entries_in_page]
             
-            entries_compact = await asyncio.to_thread(convert_entries)
+#             entries_compact = await asyncio.to_thread(convert_entries)
             
-            # Prepare prompt for AI analysis
-            prompt = f"""You are a log analysis assistant.
+#             # Prepare prompt for AI analysis
+#             prompt = f"""You are a log analysis assistant.
 
-Goal: {ai_analyse_for_goal}
+# Goal: {ai_analyse_for_goal}
 
-Below is a JSON array with {len(entries_compact)} log entries from Google Cloud Logging.
+# Below is a JSON array with {len(entries_compact)} log entries from Google Cloud Logging.
 
-Instructions:
-- If none of the log entries are relevant to the goal, respond with exactly: NO_RELEVANT_INFO
-- If some entries are relevant, extract ONLY the relevant facts and information
-- Keep your response concise and focused on the goal
-- Include timestamps and key details for relevant entries
+# Instructions:
+# - If none of the log entries are relevant to the goal, respond with exactly: NO_RELEVANT_INFO
+# - If some entries are relevant, extract ONLY the relevant facts and information
+# - Keep your response concise and focused on the goal
+# - Include timestamps and key details for relevant entries
 
-LOG_ENTRIES_JSON:
-{json.dumps(entries_compact, indent=2)}"""
+# LOG_ENTRIES_JSON:
+# {json.dumps(entries_compact, indent=2)}"""
 
-            try:
-                # Call the LM for analysis in thread
-                logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis")
+#             try:
+#                 # Call the LM for analysis in thread
+#                 logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis")
                 
-                def call_lm():
-                    return lm(prompt)
+#                 def call_lm():
+#                     return lm(prompt)
                 
-                response = await asyncio.to_thread(call_lm)
-                answer = response.strip() if hasattr(response, 'strip') else str(response).strip()
+#                 response = await asyncio.to_thread(call_lm)
+#                 answer = response.strip() if hasattr(response, 'strip') else str(response).strip()
                 
-                # Check if the response indicates relevance
-                if answer and answer.upper() != "NO_RELEVANT_INFO":
-                    result = f"=== Page {page_count} Analysis ===\n{answer}"
-                    # Log first 100 chars of the analysis for visibility
-                    preview = answer.replace('\n', ' ')[:100] + "..." if len(answer) > 100 else answer.replace('\n', ' ')
-                    logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✓ Found relevant info - {preview}")
-                    yield result
-                else:
-                    logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✗ No relevant information found")
+#                 # Check if the response indicates relevance
+#                 if answer and answer.upper() != "NO_RELEVANT_INFO":
+#                     result = f"=== Page {page_count} Analysis ===\n{answer}"
+#                     # Log first 100 chars of the analysis for visibility
+#                     preview = answer.replace('\n', ' ')[:100] + "..." if len(answer) > 100 else answer.replace('\n', ' ')
+#                     logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✓ Found relevant info - {preview}")
+#                     yield result
+#                 else:
+#                     logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✗ No relevant information found")
                     
-            except Exception as e:
-                error_msg = f"Error analyzing page {page_count}: {str(e)}"
-                logging.error(f"Page {page_count} with {len(entries_in_page)} entries: ⚠ Error - {str(e)}")
-                yield f"=== Page {page_count} Error ===\n{error_msg}"
+#             except Exception as e:
+#                 error_msg = f"Error analyzing page {page_count}: {str(e)}"
+#                 logging.error(f"Page {page_count} with {len(entries_in_page)} entries: ⚠ Error - {str(e)}")
+#                 yield f"=== Page {page_count} Error ===\n{error_msg}"
             
-            # Stop if we've reached the maximum results
-            if total_entries >= MAX_RESULTS:
-                break
+#             # Stop if we've reached the maximum results
+#             if total_entries >= MAX_RESULTS:
+#                 break
         
-        logging.info(f"Processed {page_count} pages with {total_entries} total entries")
+#         logging.info(f"Processed {page_count} pages with {total_entries} total entries")
         
-        # If we didn't yield anything, indicate no relevant info found
-        if page_count == 0:
-            yield "No log entries found for the specified criteria."
+#         # If we didn't yield anything, indicate no relevant info found
+#         if page_count == 0:
+#             yield "No log entries found for the specified criteria."
             
-    except Exception as e:
-        error_message = f"Error fetching logs from project {project_id}: {str(e)}"
-        logging.error(error_message)
-        yield error_message
+#     except Exception as e:
+#         error_message = f"Error fetching logs from project {project_id}: {str(e)}"
+#         logging.error(error_message)
+#         yield error_message

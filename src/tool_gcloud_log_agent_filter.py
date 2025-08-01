@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from google.cloud import logging as gcp_logging
 
 # Configuration constants - adjust these as needed
-MAX_RESULTS = 1000
+MAX_RESULTS = 200
 PAGE_SIZE = 100
 
 class LogEntry(BaseModel):
@@ -19,7 +19,7 @@ class LogEntry(BaseModel):
 class LogEntryList(BaseModel):
     entries: List[LogEntry]
 
-def to_entry(entry: gcp_logging.LogEntry) -> LogEntry:
+def _to_entry(entry: gcp_logging.LogEntry) -> LogEntry:
     """Convert a Google Cloud Logging entry to our LogEntry model."""
     the_payload = entry.payload if entry.payload is not None else "-no-payload-"  # type: ignore[attr-defined]
     if isinstance(the_payload, str):
@@ -36,6 +36,58 @@ def to_entry(entry: gcp_logging.LogEntry) -> LogEntry:
         message=msg
     )
 
+def _process_page(lm: dspy.LM, entries_in_page: List[gcp_logging.LogEntry], ai_analyse_for_goal: str, page_count: int) -> List[str]:
+    relevant_chunks = []
+    # Convert entries to our model format
+    entries_compact = [_to_entry(entry).model_dump() for entry in entries_in_page]
+    
+    # Prepare prompt for AI analysis
+    prompt = f"""You are a log analysis expert.
+
+Goal (I start with the goal so you know what to look for): {ai_analyse_for_goal}
+
+Below is a JSON array with {len(entries_compact)} log entries from Google Cloud Logging.
+
+Instructions:
+- If none of the log entries are relevant to the goal, respond with exactly: NO_RELEVANT_INFO
+- If some entries are relevant, extract ONLY the relevant facts and information
+- Keep your response concise and focused on the goal
+- Include timestamps and key details for relevant entries to support follow up analysis
+
+LOG_ENTRIES_JSON:
+{json.dumps(entries_compact, indent=2)}
+
+GOAL (I repeat the goal now that you got all the details): {ai_analyse_for_goal}
+
+"""
+
+    try:
+        # Call the LM for analysis
+        logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis using prompt: {prompt}")
+        # Log the JSON entries for debugging
+        logging.info(f"Page {page_count} with prompt of length {len(prompt)}: {prompt}")
+        response_answer = dspy.Predict(signature="question -> answer")(question=prompt).answer
+        # Log the full response as JSON for debugging
+        logging.info(f"Page {page_count} LLM response JSON: {json.dumps(response_answer, indent=2)}")
+        answer = response_answer.strip() if hasattr(response_answer, 'strip') else str(response_answer).strip()
+        
+        # Check if the response indicates relevance
+        if answer and answer.upper() != "NO_RELEVANT_INFO":
+            relevant_chunks.append(f"=== Page {page_count} Analysis ===\n{answer}")
+            # Log first 100 chars of the analysis for visibility
+            preview = answer.replace('\n', ' ')[:100] + "..." if len(answer) > 100 else answer.replace('\n', ' ')
+            logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✓ Found relevant info - {preview}")
+        else:
+            logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✗ No relevant information found")
+            
+    except Exception as e:
+        error_msg = f"Error analyzing page {page_count}: {str(e)}"
+        logging.error(f"Page {page_count} with {len(entries_in_page)} entries: ⚠ Error - {str(e)}")
+        relevant_chunks.append(f"=== Page {page_count} Error ===\n{error_msg}")
+
+    return relevant_chunks
+
+# https://cloud.google.com/logging/docs/view/logging-query-language
 def gcloud_logging_read_command(
     project_id: str,
     query: str,
@@ -43,9 +95,34 @@ def gcloud_logging_read_command(
     end_time: str,
     ai_analyse_for_goal: str,
 ) -> str:
-    """
-    Fetches log entries from Google Cloud Logging and uses AI to filter for relevant information.
-    
+    """AI-POWERED LOG ANALYSIS TOOL
+
+    The `gcloud_logging_read_command` tool provides intelligent log analysis capabilities:
+
+    ### Usage
+    ```python
+    gcloud_logging_read_command(
+        project_id="your-project-id",
+        query="resource.type=k8s_container",
+        start_time="2024-01-01T00:00:00Z", 
+        end_time="2024-01-01T23:59:59Z",
+        ai_analyse_for_goal="Find errors related to pod scheduling"
+    )
+    ```
+
+    ### Features
+    - Fetches logs from Google Cloud Logging based on query and time range
+    - Processes logs in pages of 100 entries
+    - Uses AI to analyze each page for relevance to your goal
+    - Returns only relevant information, filtering out noise
+    - Automatically handles log entry conversion and formatting
+
+    ### Example Goals
+    - "Find errors related to pod scheduling failures"
+    - "Identify performance issues with container restarts"  
+    - "Look for authentication or authorization problems"
+    - "Find logs related to memory or CPU resource constraints"
+        
     Args:
         project_id: The Google Cloud project ID
         query: The log filter query
@@ -58,7 +135,9 @@ def gcloud_logging_read_command(
     """
     
     # Build the complete filter
-    filter_str = f'({query}) AND timestamp>="{start_time}" AND timestamp<="{end_time}"'
+    ignore_ids = ["dagster - DEBUG", "dagster - INFO", "Failed to parse time", "Failed to parse latency field"]
+    ignore_filter_part = " AND NOT (" + " OR ".join(f'"{id}"' for id in ignore_ids) + ")"
+    filter_str = f'({query}) AND timestamp>="{start_time}" AND timestamp<="{end_time}" {ignore_filter_part}'
     
     logging.info(f"Fetching logs for project {project_id} with filter: {filter_str}")
     logging.info(f"AI analysis goal: {ai_analyse_for_goal}")
@@ -68,9 +147,8 @@ def gcloud_logging_read_command(
         client = gcp_logging.Client(project=project_id)  # type: ignore[no-untyped-call]
         
         # Get the configured DSPy LM instance
-        lm = dspy.settings.lm
-        if lm is None:
-            return "Error: No language model configured in DSPy"
+        lm: dspy.LM = dspy.settings.lm
+        # lm = dspy.LM('vertex_ai/gemini-2.5-flash-lite', reasoning_effort="disable")
         
         relevant_chunks = []
         page_count = 0
@@ -82,6 +160,8 @@ def gcloud_logging_read_command(
             order_by="timestamp desc",
             max_results=MAX_RESULTS
         ))
+
+        logging.info(f"Fetched {len(entries_list)} log entries.")
         
         # Process entries in pages of PAGE_SIZE
         for i in range(0, len(entries_list), PAGE_SIZE):
@@ -92,57 +172,24 @@ def gcloud_logging_read_command(
             if not entries_in_page:
                 continue
             
-            # Convert entries to our model format
-            entries_compact = [to_entry(entry).model_dump() for entry in entries_in_page]
-            
-            # Prepare prompt for AI analysis
-            prompt = f"""You are a log analysis assistant.
-
-Goal: {ai_analyse_for_goal}
-
-Below is a JSON array with {len(entries_compact)} log entries from Google Cloud Logging.
-
-Instructions:
-- If none of the log entries are relevant to the goal, respond with exactly: NO_RELEVANT_INFO
-- If some entries are relevant, extract ONLY the relevant facts and information
-- Keep your response concise and focused on the goal
-- Include timestamps and key details for relevant entries
-
-LOG_ENTRIES_JSON:
-{json.dumps(entries_compact, indent=2)}"""
-
-            try:
-                # Call the LM for analysis
-                logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis using prompt: {prompt}")
-                # Log the JSON entries for debugging
-                logging.info(f"Page {page_count} entries JSON: {json.dumps(entries_compact, indent=2)}")
-                response = lm(prompt)
-                # Log the full response as JSON for debugging
-                logging.info(f"Page {page_count} LLM response JSON: {json.dumps(str(response), indent=2)}")
-                answer = response.strip() if hasattr(response, 'strip') else str(response).strip()
-                
-                # Check if the response indicates relevance
-                if answer and answer.upper() != "NO_RELEVANT_INFO":
-                    relevant_chunks.append(f"=== Page {page_count} Analysis ===\n{answer}")
-                    # Log first 100 chars of the analysis for visibility
-                    preview = answer.replace('\n', ' ')[:100] + "..." if len(answer) > 100 else answer.replace('\n', ' ')
-                    logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✓ Found relevant info - {preview}")
-                else:
-                    logging.info(f"Page {page_count} with {len(entries_in_page)} entries: ✗ No relevant information found")
-                    
-            except Exception as e:
-                error_msg = f"Error analyzing page {page_count}: {str(e)}"
-                logging.error(f"Page {page_count} with {len(entries_in_page)} entries: ⚠ Error - {str(e)}")
-                relevant_chunks.append(f"=== Page {page_count} Error ===\n{error_msg}")
+            relevant_chunks.extend(_process_page(lm, entries_in_page, ai_analyse_for_goal, page_count))
         
-        logging.info(f"Processed {page_count} pages with {total_entries} total entries")
+        logging.info(f"Processed {page_count} pages with {total_entries} total entries and found {len(relevant_chunks)} pages with relevant information")
+        would_there_have_been_more_pages: bool = total_entries >= MAX_RESULTS
+        would_there_have_been_more_pages_text = "**There would be more pages** but MAX_RESULTS={MAX_RESULTS} was reached" if would_there_have_been_more_pages else "There would be no more pages so we covered all the log messages with the query."
+        page_fetching_statistics = f"""
+
+# Page fetching statistics
+Processed {page_count} pages with {total_entries} total entries MAX_RESULTS={MAX_RESULTS} and PAGE_SIZE={PAGE_SIZE}.
+
+{would_there_have_been_more_pages_text}
+"""
+        output_prefix = page_fetching_statistics + "\n\n" + "# AI-filtered log entries" + "\n\n"
         
-        if relevant_chunks:
-            result = "\n\n".join(relevant_chunks)
-            logging.info(f"Found {len(relevant_chunks)} pages with relevant information")
-            return result
+        if len(relevant_chunks) > 0:
+            return output_prefix + "\n\n".join(relevant_chunks)
         else:
-            return "No relevant information found in the log entries."
+            return output_prefix + "No relevant information found in the log entries."
             
     except Exception as e:
         error_message = f"Error fetching logs from project {project_id}: {str(e)}"
@@ -276,3 +323,7 @@ LOG_ENTRIES_JSON:
 #         error_message = f"Error fetching logs from project {project_id}: {str(e)}"
 #         logging.error(error_message)
 #         yield error_message
+
+
+def get_gcloud_logging_read_command_tool() -> dspy.Tool:
+    return dspy.Tool(gcloud_logging_read_command)

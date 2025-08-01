@@ -1,13 +1,12 @@
+import json
 import dspy  # type: ignore[import-untyped]
 import subprocess
 import logging
-import os
 import argparse
-from datetime import datetime
+from datetime import datetime, UTC
 from dotenv import load_dotenv
-from main_dspy_prompt import get_allowed_commands_starts_with_information, allowed_commands_starts_with
-from tool_shell import kubectl_shell
-from tool_gcloud_log_agent_filter import gcloud_logging_read_command
+from tool_shell import get_kubectl_shell_tool
+from tool_gcloud_log_agent_filter import get_gcloud_logging_read_command_tool
 
 def setup_logging() -> str:
     """Sets up a file-based logger for the application."""
@@ -33,14 +32,9 @@ def setup_logging() -> str:
 # Load environment variables from .env file
 load_dotenv()
 
-# It's good practice to handle the case where the API key is not set
-if "GEMINI_API_KEY" not in os.environ:
-    print("Error: GEMINI_API_KEY environment variable not set.")
-    exit(1)
-
 # Configure DSPy with Gemini 2.5 Flash via Vertex AI (same as main.py)
-gemini = dspy.LM('vertex_ai/gemini-2.5-flash')
-dspy.configure(lm=gemini)
+gemini = dspy.LM('vertex_ai/gemini-2.5-flash', thinking={"type": "enabled", "budget_tokens": 128})
+dspy.configure(lm=gemini, track_usage=True)
 
 def make_sure_we_are_using_the_correct_context(context_name: str | None = None, force_set_context: bool = False) -> None:
     """
@@ -109,33 +103,78 @@ def main(goal: str, context_name: str | None = None, force_set_context: bool = F
 
     make_sure_we_are_using_the_correct_context(context_name, force_set_context)
     
-    instructions = get_allowed_commands_starts_with_information(allowed_commands_starts_with)   
-    signature=dspy.Signature(
-            "question -> answer",
-            instructions=instructions
+    
+    OPS_RESOLVER_INSTRUCTIONS = f"""
+You are a DevOps expert agent.
+Your task is to use the provided tools to analyze the cluster and logs based on the user's request.
+
+Think about what commands you need to run. After executing a command, observe the output and decide on the next step.
+When you have gathered enough information to answer the user's request, provide a final, comprehensive answer.
+Start with a short conclusion on the most critical information you have gathered.
+After that, provide a detailed answer to the user's request.
+
+The current date and time is {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}.
+    """
+    signature = dspy.Signature(
+            "question -> answer", # type: ignore[arg-type]
+            instructions=OPS_RESOLVER_INSTRUCTIONS
         )
-    tools = [dspy.Tool(kubectl_shell), dspy.Tool(gcloud_logging_read_command)]
-    agent = dspy.ReAct(tools=tools, signature=signature)
+    tools = [
+        get_kubectl_shell_tool(),
+        get_gcloud_logging_read_command_tool(),
+        ]
+    agent = dspy.ReAct(
+        tools=tools,
+        signature=signature # type: ignore[arg-type]
+        )
     
     logging.info(f"Goal: {goal}\n")
 
     # Run the agent
+    processing_start_time = datetime.now()
+    tracked_usage_metadata = None
     try:
         response = agent(question=goal)
+        tracked_usage_metadata = response.get_lm_usage()
         
         # Extract the final answer
         final_answer = response.answer
         
-        # The final output is printed to the console
-        logging.info(f"\nFinal Answer:\n{final_answer}")
-
-        with open(log_filename.replace(".log", ".final_answer.md"), "a") as f:
-            f.write(final_answer)
-        
     except Exception as e:
         error_msg = f"Error running agent: {str(e)}"
+        final_answer = error_msg
         logging.error(error_msg)
         print(error_msg)
+
+    processing_end_time = datetime.now()
+    processing_duration_seconds = (processing_end_time - processing_start_time).total_seconds()
+    logging.info(f"\n\nProcessing duration: {processing_duration_seconds} seconds")
+        
+    # The final output is printed to the console
+    logging.info(f"\n\nFull LM History:\n{str(gemini.history)}")
+    tracked_usage_output = json.dumps(tracked_usage_metadata, indent=2) if tracked_usage_metadata else "No token usage metadata available"
+    logging.info(f"\n\nToken usage:\n{tracked_usage_output}")
+    logging.info(f"\n\nOutcome:\n{final_answer}")
+
+    final_answer_output_md = f"""
+# Mission to accomplish
+
+{goal}
+
+# Outcome
+
+{final_answer}
+
+# Metadata
+Processing duration: {processing_duration_seconds:.2f} seconds
+
+Token usage:
+```json
+{tracked_usage_output}
+```
+"""
+    with open(log_filename.replace(".log", ".final_answer.md"), "w") as f:
+        f.write(final_answer_output_md)
     
     print(f"\nFull conversation history logged to: {log_filename}")
 

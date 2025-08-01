@@ -8,7 +8,7 @@ dependencies = [
     "google-generativeai",
     "python-dotenv",
     "pydantic-ai",
-    "dspy",
+    "dspy>=3.0.0.b3",
     "google-cloud-logging"
 ]
 

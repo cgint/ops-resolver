@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from google.cloud import logging as gcp_logging
 
 # Configuration constants - adjust these as needed
-MAX_RESULTS = 200
+MAX_RESULTS = 1000
 PAGE_SIZE = 100
 
 class LogEntry(BaseModel):
@@ -65,7 +65,7 @@ GOAL (I repeat the goal now that you got all the details): {ai_analyse_for_goal}
         # Call the LM for analysis
         logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis using prompt: {prompt}")
         # Log the JSON entries for debugging
-        logging.info(f"Page {page_count} with prompt of length {len(prompt)}: {prompt}")
+        logging.info(f"Page {page_count} with {len(prompt)} char prompt: {prompt}")
         response_answer = dspy.Predict(signature="question -> answer", lm=process_page_lm)(question=prompt).answer
         # Log the full response as JSON for debugging
         logging.info(f"Page {page_count} LLM response JSON: {json.dumps(response_answer, indent=2)}")
@@ -176,7 +176,7 @@ def gcloud_logging_read_command(
         
         logging.info(f"Processed {page_count} pages with {total_entries} total entries and found {len(relevant_chunks)} pages with relevant information")
         would_there_have_been_more_pages: bool = total_entries >= MAX_RESULTS
-        would_there_have_been_more_pages_text = "**There would be more pages** but MAX_RESULTS={MAX_RESULTS} was reached" if would_there_have_been_more_pages else "There would be no more pages so we covered all the log messages with the query."
+        would_there_have_been_more_pages_text = "**There would be more pages** but MAX_RESULTS was reached" if would_there_have_been_more_pages else "There would be no more pages so we covered all the log messages with the query."
         page_fetching_statistics = f"""
 
 # Page fetching statistics

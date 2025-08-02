@@ -1,5 +1,5 @@
 import json
-import dspy  # type: ignore[import-untyped]
+import dspy # type: ignore[import-untyped]
 import subprocess
 import logging
 import argparse
@@ -116,7 +116,7 @@ After that, provide a detailed answer to the user's request.
 The current date and time is {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")}.
     """
     signature = dspy.Signature(
-            "question -> answer", # type: ignore[arg-type]
+            "question -> answer",
             instructions=OPS_RESOLVER_INSTRUCTIONS
         )
     tools = [
@@ -125,7 +125,7 @@ The current date and time is {datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"
         ]
     agent = dspy.ReAct(
         tools=tools,
-        signature=signature # type: ignore[arg-type]
+        signature=signature
         )
     
     logging.info(f"Goal: {goal}\n")

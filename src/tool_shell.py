@@ -1,6 +1,6 @@
 import subprocess
 import logging
-import dspy
+import dspy # type: ignore[import-untyped]
 
 allowed_commands_starts_with = {
     "kubectl get": "Get information about resources", 
@@ -123,5 +123,5 @@ def kubectl_shell(command: str) -> str:
         return error_message
     
 
-def get_kubectl_shell_tool() -> dspy.Tool:
+def get_kubectl_shell_tool() -> dspy.Tool: # type: ignore[no-any-unimported]
     return dspy.Tool(kubectl_shell, desc=KUBECTL_SHELL_INSTRUCTIONS)

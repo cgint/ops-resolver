@@ -1,4 +1,4 @@
-import dspy  # type: ignore[import-untyped]
+import dspy # type: ignore[import-untyped]
 import json
 import logging
 from typing import Any, List
@@ -36,7 +36,7 @@ def _to_entry(entry: gcp_logging.LogEntry) -> LogEntry:
         message=msg
     )
 
-def _process_page(lm: dspy.LM, entries_in_page: List[gcp_logging.LogEntry], ai_analyse_for_goal: str, page_count: int) -> List[str]:
+def _process_page(process_page_lm: dspy.LM, entries_in_page: List[gcp_logging.LogEntry], ai_analyse_for_goal: str, page_count: int) -> List[str]: # type: ignore[no-any-unimported]
     relevant_chunks = []
     # Convert entries to our model format
     entries_compact = [_to_entry(entry).model_dump() for entry in entries_in_page]
@@ -66,7 +66,7 @@ GOAL (I repeat the goal now that you got all the details): {ai_analyse_for_goal}
         logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis using prompt: {prompt}")
         # Log the JSON entries for debugging
         logging.info(f"Page {page_count} with prompt of length {len(prompt)}: {prompt}")
-        response_answer = dspy.Predict(signature="question -> answer")(question=prompt).answer
+        response_answer = dspy.Predict(signature="question -> answer", lm=process_page_lm)(question=prompt).answer
         # Log the full response as JSON for debugging
         logging.info(f"Page {page_count} LLM response JSON: {json.dumps(response_answer, indent=2)}")
         answer = response_answer.strip() if hasattr(response_answer, 'strip') else str(response_answer).strip()
@@ -147,8 +147,8 @@ def gcloud_logging_read_command(
         client = gcp_logging.Client(project=project_id)  # type: ignore[no-untyped-call]
         
         # Get the configured DSPy LM instance
-        lm: dspy.LM = dspy.settings.lm
-        # lm = dspy.LM('vertex_ai/gemini-2.5-flash-lite', reasoning_effort="disable")
+        process_page_lm = dspy.settings.lm
+        # process_page_lm = dspy.LM('vertex_ai/gemini-2.5-flash-lite', reasoning_effort="disable")
         
         relevant_chunks = []
         page_count = 0
@@ -172,7 +172,7 @@ def gcloud_logging_read_command(
             if not entries_in_page:
                 continue
             
-            relevant_chunks.extend(_process_page(lm, entries_in_page, ai_analyse_for_goal, page_count))
+            relevant_chunks.extend(_process_page(process_page_lm, entries_in_page, ai_analyse_for_goal, page_count))
         
         logging.info(f"Processed {page_count} pages with {total_entries} total entries and found {len(relevant_chunks)} pages with relevant information")
         would_there_have_been_more_pages: bool = total_entries >= MAX_RESULTS
@@ -325,5 +325,5 @@ Processed {page_count} pages with {total_entries} total entries MAX_RESULTS={MAX
 #         yield error_message
 
 
-def get_gcloud_logging_read_command_tool() -> dspy.Tool:
+def get_gcloud_logging_read_command_tool() -> dspy.Tool: # type: ignore[no-any-unimported]
     return dspy.Tool(gcloud_logging_read_command)

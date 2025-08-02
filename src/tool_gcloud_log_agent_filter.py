@@ -4,6 +4,7 @@ import logging
 from typing import Any, List
 from pydantic import BaseModel
 from google.cloud import logging as gcp_logging
+from datetime import datetime
 
 # Configuration constants - adjust these as needed
 MAX_RESULTS = 1000
@@ -66,7 +67,8 @@ GOAL (I repeat the goal now that you got all the details): {ai_analyse_for_goal}
         logging.info(f"Page {page_count} with {len(entries_in_page)} entries: Asking LLM for analysis using prompt: {prompt}")
         # Log the JSON entries for debugging
         logging.info(f"Page {page_count} with {len(prompt)} char prompt: {prompt}")
-        response_answer = dspy.Predict(signature="question -> answer", lm=process_page_lm)(question=prompt).answer
+        with dspy.context(lm=process_page_lm):
+            response_answer = dspy.Predict(signature="question -> answer")(question=prompt).answer
         # Log the full response as JSON for debugging
         logging.info(f"Page {page_count} LLM response JSON: {json.dumps(response_answer, indent=2)}")
         answer = response_answer.strip() if hasattr(response_answer, 'strip') else str(response_answer).strip()
@@ -147,21 +149,23 @@ def gcloud_logging_read_command(
         client = gcp_logging.Client(project=project_id)  # type: ignore[no-untyped-call]
         
         # Get the configured DSPy LM instance
-        process_page_lm = dspy.settings.lm
-        # process_page_lm = dspy.LM('vertex_ai/gemini-2.5-flash-lite', reasoning_effort="disable")
+        # process_page_lm = dspy.settings.lm
+        process_page_lm = dspy.LM('vertex_ai/gemini-2.5-flash-lite', reasoning_effort="disable")
         
         relevant_chunks = []
         page_count = 0
         total_entries = 0
         
         # Iterate through log entries in batches
+        list_entries_start_time = datetime.now()
         entries_list = list(client.list_entries(  # type: ignore[no-untyped-call]
             filter_=filter_str,
             order_by="timestamp desc",
             max_results=MAX_RESULTS
         ))
-
-        logging.info(f"Fetched {len(entries_list)} log entries.")
+        list_entries_end_time = datetime.now()
+        list_entries_duration_seconds = (list_entries_end_time - list_entries_start_time).total_seconds()
+        logging.info(f"Fetched {len(entries_list)} log entries in {list_entries_duration_seconds} seconds.")
         
         # Process entries in pages of PAGE_SIZE
         for i in range(0, len(entries_list), PAGE_SIZE):

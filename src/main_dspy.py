@@ -33,7 +33,9 @@ def setup_logging() -> str:
 load_dotenv()
 
 # Configure DSPy with Gemini 2.5 Flash via Vertex AI (same as main.py)
-gemini = dspy.LM('vertex_ai/gemini-2.5-flash', thinking={"type": "enabled", "budget_tokens": 128})
+# gemini_thinking = dspy.LM('vertex_ai/gemini-2.5-flash', thinking={"type": "enabled", "budget_tokens": 128})
+gemini_no_thinking = dspy.LM('vertex_ai/gemini-2.5-flash', reasoning_effort="disable")
+gemini = gemini_no_thinking
 dspy.configure(lm=gemini, track_usage=True)
 
 def make_sure_we_are_using_the_correct_context(context_name: str | None = None, force_set_context: bool = False) -> None:

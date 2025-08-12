@@ -4,7 +4,8 @@ import dspy # type: ignore[import-untyped]
 
 allowed_commands_starts_with = {
     "kubectl get": "Get information about resources", 
-    "kubectl describe": "Get detailed information about a resource"
+    "kubectl describe": "Get detailed information about a resource",
+    "kubectl config get-": "Get kubeconfig information (clusters, contexts, users)"
 }
 allowed_commands_starts_with_desc = "\n".join([f"- `{command}`: {description}" for command, description in allowed_commands_starts_with.items()])
 
@@ -49,6 +50,13 @@ The kubectl_shell tool only allows commands that start with:
 - kubectl describe deployment my-deployment (describe specific deployment)
 - kubectl describe service my-service (describe service)
 - kubectl describe namespace my-namespace (describe namespace)
+
+### kubectl config get- Commands
+- kubectl config get-clusters (display clusters defined in kubeconfig)
+- kubectl config get-contexts (describe one or many contexts)
+- kubectl config get-users (display users defined in kubeconfig)
+- kubectl config get-contexts --no-headers (get contexts without headers)
+- kubectl config get-contexts -o name (get only context names)
 
 ### Resource Types (common abbreviations):
 pods (po), services (svc), deployments (deploy), replicasets (rs), daemonsets (ds), statefulsets (sts), jobs, cronjobs (cj), configmaps (cm), secrets, persistentvolumes (pv), persistentvolumeclaims (pvc), nodes (no), namespaces (ns), ingresses (ing)

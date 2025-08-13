@@ -1,0 +1,34 @@
+variables:
+  FORCE_RUN_BUILD_IMAGE: "false"
+  RUN_NIGHTTEST_ONLY: "false"
+  SERVICE_VERSION: 0.0.$CI_PIPELINE_ID
+  BUILD_CONTAINER_NAME: ops-resolver
+
+workflow:
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: never
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $FORCE_RUN_BUILD_IMAGE == "false"'
+      when: never
+    - when: always
+
+stages:
+  - build-image
+
+build-image:
+  rules:
+    - if: '$RUN_NIGHTTEST_ONLY == "false" && ($FORCE_RUN_BUILD_IMAGE == "true" || $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH)'
+  stage: build-image
+  image:
+    name: gcr.io/kaniko-project/executor:v1.9.0-debug
+    entrypoint: [ "" ]
+  before_script:
+    - export GOOGLE_APPLICATION_CREDENTIALS=$CI_PUBLISHER_SERVICE_ACCOUNT_KEY
+  script:
+    - IMAGE_TAG="europe-docker.pkg.dev/smec-devtools-build-prod/central-docker-repository/$BUILD_CONTAINER_NAME:$SERVICE_VERSION"
+    - echo "Building image $IMAGE_TAG"
+    - >-
+      /kaniko/executor
+      --context "${CI_PROJECT_DIR}"
+      --dockerfile "${CI_PROJECT_DIR}/Dockerfile"
+      --destination $IMAGE_TAG

@@ -37,9 +37,9 @@ if "GEMINI_API_KEY" not in os.environ:
     exit(1)
 
 # Define the ReAct agent
-# Using Gemini 2.5 Flash for advanced reasoning for kubectl commands
+# Using Gemini 3 Flash for advanced reasoning for kubectl commands
 provider = GoogleProvider(vertexai=True)
-model = GoogleModel('gemini-2.5-flash', provider=provider)
+model = GoogleModel('gemini-3-flash-preview', provider=provider)
 agent = Agent(
     model,
     system_prompt=(

@@ -149,8 +149,8 @@ def gcloud_logging_read_command(
         client = gcp_logging.Client(project=project_id)  # type: ignore[no-untyped-call]
         
         # Get the configured DSPy LM instance
-        # process_page_lm = dspy.settings.lm
-        process_page_lm = dspy.LM('vertex_ai/gemini-2.5-flash-lite', reasoning_effort="disable")
+        process_page_lm = dspy.settings.lm
+        # process_page_lm = dspy.LM('vertex_ai/gemini-2.5-flash-lite', reasoning_effort="disable")
         
         relevant_chunks = []
         page_count = 0

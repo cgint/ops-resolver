@@ -34,7 +34,7 @@ load_dotenv()
 
 # Configure DSPy with Gemini 2.5 Flash via Vertex AI (same as main.py)
 # gemini_thinking = dspy.LM('vertex_ai/gemini-2.5-flash', thinking={"type": "enabled", "budget_tokens": 128})
-gemini_no_thinking = dspy.LM('vertex_ai/gemini-2.5-flash', reasoning_effort="disable")
+gemini_no_thinking = dspy.LM('vertex_ai/gemini-3-flash-preview', reasoning_effort="disable")
 gemini = gemini_no_thinking
 dspy.configure(lm=gemini, track_usage=True)
 
